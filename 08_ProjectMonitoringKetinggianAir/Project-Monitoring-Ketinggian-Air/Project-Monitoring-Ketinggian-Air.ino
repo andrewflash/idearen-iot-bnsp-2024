@@ -1,16 +1,21 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
+#include <ArduinoJson.h>
 
 // Ganti dengan SSID dan Password Wi-Fi Anda
-const char *ssid = "Your_WiFi_SSID";
-const char *password = "Your_WiFi_Password";
+// const char *ssid = "Your_WiFi_SSID";
+// const char *password = "Your_WiFi_Password";
+const char *ssid = "Fave";
+const char *password = "freewifi";
 
 // Ganti dengan informasi broker MQTT Anda
-const char *mqtt_server = "broker.hivemq.com";
+const char *mqtt_server = "mqtt3.thingspeak.com";
 const int mqtt_port = 1883;
-const char *mqtt_user = "your_mqtt_user";
-const char *mqtt_password = "your_mqtt_password";
-const char *mqtt_topic = "water_level/data";
+const char *mqtt_client_id = "EB00DzMTDAsRITsfBTs1KjA";
+const char *mqtt_user = "EB00DzMTDAsRITsfBTs1KjA";
+const char *mqtt_password = "gWmLhMj3NTlQ43+RqngQpAwz";
+const char *mqtt_topic = "channels/2607974/publish";
+const char *mqtt_topic_command = "channels/2607974/subscribe";
 
 // Pin untuk HC-SR04
 const int trigPin = 5;
@@ -22,6 +27,16 @@ const int ledRedPin = 14;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
+
+// Timer
+unsigned long tstartDistance = 0;
+const unsigned long intervalDistance = 2000;
+
+unsigned long tstartSend = 0;
+const unsigned long intervalSend = 15000;
+
+// Membaca data dari sensor HC-SR04
+long duration, distance;
 
 void setup()
 {
@@ -47,6 +62,9 @@ void setup()
     // Setup MQTT
     client.setServer(mqtt_server, mqtt_port);
     client.setCallback(mqttCallback);
+
+    tstartDistance = millis();
+    tstartSend = millis();
 }
 
 void loop()
@@ -57,41 +75,53 @@ void loop()
     }
     client.loop();
 
-    // Membaca data dari sensor HC-SR04
-    long duration, distance;
-    digitalWrite(trigPin, LOW);
-    delayMicroseconds(2);
-    digitalWrite(trigPin, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(trigPin, LOW);
-    duration = pulseIn(echoPin, HIGH);
-    distance = duration * 0.034 / 2;
+    // Baca sensor setiap 2 detik
+    if(millis() - tstartDistance > intervalDistance)
+    {
+      digitalWrite(trigPin, LOW);
+      delayMicroseconds(2);
+      digitalWrite(trigPin, HIGH);
+      delayMicroseconds(10);
+      digitalWrite(trigPin, LOW);
+      duration = pulseIn(echoPin, HIGH);
 
-    // Menyalakan LED Hijau jika ketinggian air normal
-    if (distance > 0 && distance < 100)
-    {
-        digitalWrite(ledGreenPin, HIGH);
-        digitalWrite(ledRedPin, LOW);
-    }
-    else
-    {
-        digitalWrite(ledGreenPin, LOW);
-        digitalWrite(ledRedPin, HIGH);
-    }
+      // Distance dalam cm
+      distance = duration * 0.034 / 2;
 
-    // Kirim data ke MQTT
-    String payload = String(distance);
-    if (client.publish(mqtt_topic, payload.c_str()))
-    {
-        Serial.print("Published: ");
-        Serial.println(payload);
-    }
-    else
-    {
-        Serial.println("Failed to publish data");
+      Serial.print("Ketinggian ke permukaan air: ");
+      Serial.println(distance);
+
+      // Menyalakan LED Hijau jika ketinggian air normal
+      if (distance > 50)
+      {
+          digitalWrite(ledGreenPin, HIGH);
+          digitalWrite(ledRedPin, LOW);
+      }
+      else
+      {
+          digitalWrite(ledGreenPin, LOW);
+          digitalWrite(ledRedPin, HIGH);
+      }
+
+      tstartDistance = millis();
     }
 
-    delay(2000); // Delay 2 detik sebelum pengukuran berikutnya
+    //Kirim data ke MQTT setiap 15 detik
+    if(millis() - tstartSend > intervalSend)
+    {
+      String payload = "field1=" + String(distance) + "&field2=" + digitalRead(ledRedPin) + "&field3=" + digitalRead(ledGreenPin) + "&status=MQTTPUBLISH";
+      if (client.publish(mqtt_topic, payload.c_str()))
+      {
+          Serial.print("Published: ");
+          Serial.println(payload);
+      }
+      else
+      {
+          Serial.println("Failed to publish data");
+      }
+
+      tstartSend = millis();
+    }
 }
 
 void reconnect()
@@ -99,10 +129,10 @@ void reconnect()
     while (!client.connected())
     {
         Serial.print("Attempting MQTT connection...");
-        if (client.connect("ESP32Client", mqtt_user, mqtt_password))
+        if (client.connect(mqtt_client_id, mqtt_user, mqtt_password))
         {
             Serial.println("connected");
-            client.subscribe(mqtt_topic);
+            client.subscribe(mqtt_topic_command);
         }
         else
         {
@@ -119,9 +149,48 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     Serial.print("Message arrived [");
     Serial.print(topic);
     Serial.print("] ");
+
+    char message[length + 1];
+
     for (int i = 0; i < length; i++)
     {
-        Serial.print((char)payload[i]);
+        message[i] = (char)payload[i];
     }
-    Serial.println();
+    message[length] = '\0';
+    Serial.println(message);
+
+    // Parse JSON payload
+    StaticJsonDocument<200> doc;
+    DeserializationError error = deserializeJson(doc, message);
+
+    if (error)
+    {
+        Serial.print("deserializeJson() failed: ");
+        Serial.println(error.c_str());
+        return;
+    }
+
+    // Led status merah ada di field2, hijau field3
+    const char *ledStateRed = doc["field2"];
+    const char *ledStateGreen = doc["field3"];
+
+    // Nyala matikan LED Merah
+    if (strcmp(ledStateRed, "1") == 0)
+    {
+        digitalWrite(2, HIGH);
+    }
+    else if (strcmp(ledStateRed, "0") == 0)
+    {
+        digitalWrite(2, LOW);
+    }
+
+  // Nyala matikan LED Hijau
+    if (strcmp(ledStateGreen, "1") == 0)
+    {
+        digitalWrite(2, HIGH);
+    }
+    else if (strcmp(ledStateGreen, "0") == 0)
+    {
+        digitalWrite(2, LOW);
+    }
 }

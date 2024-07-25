@@ -1,22 +1,27 @@
 #include <DHT.h>
 #include <WiFi.h>
 
-String apiKey = "";        // sesuaikan dengan Key kalian dari thingspeak.com
-const char *ssid = "";     // sesuaikan dengan ssid wifi kalian
-const char *password = ""; // sesuaikan dengan wifi password kalian
+String apiKey = "LVBOHBBQ8A2TBB5G";        // sesuaikan dengan Key kalian dari thingspeak.com
+const char *ssid = "BOH";     // sesuaikan dengan ssid wifi kalian
+const char *password = "officefreewifi"; // sesuaikan dengan wifi password kalian
 const char *server = "api.thingspeak.com";
 
-#define DHTPIN D2
+#define DHTPIN 11
 #define DHTTYPE DHT11
+#define LEDPIN  27
 
 DHT dht(DHTPIN, DHTTYPE);
 WiFiClient client;
+
+bool led_status = false;
 
 void setup()
 {
     Serial.begin(115200);
     delay(10);
     dht.begin();
+    pinMode(LEDPIN, OUTPUT);
+    digitalWrite(LEDPIN, LOW);
 
     WiFi.begin(ssid, password);
 
@@ -39,13 +44,17 @@ void setup()
 void loop()
 {
 
-    float kelembapan = dht.readHumidity();
-    float temperatur = dht.readTemperature();
+    // float kelembapan = dht.readHumidity();
+    // float temperatur = dht.readTemperature();
+    float kelembapan = 90.1;
+    float temperatur = 30.1;
     if (isnan(kelembapan) || isnan(temperatur))
     {
         Serial.println("Gagal Membaca Sensor DHT");
         return;
     }
+
+    led_status = digitalRead(LEDPIN);
 
     if (client.connect(server, 80))
     {
@@ -54,6 +63,8 @@ void loop()
         postStr += String(temperatur);
         postStr += "&field2=";
         postStr += String(kelembapan);
+        postStr += "&field3=";
+        postStr += String(led_status);
         postStr += "\r\n\r\n";
 
         client.print("POST /update HTTP/1.1\n");

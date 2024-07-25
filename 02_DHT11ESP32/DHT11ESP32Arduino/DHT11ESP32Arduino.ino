@@ -7,8 +7,8 @@
 #define DHT_PIN 5      // ESP32 pin GPIO5 connected to DHT11 sensor's pin
 #define DHT_TYPE DHT11 // DHT11 sensor type
 
-const char *ssid = "testing";
-const char *password = "123456789";
+const char *ssid = "BOH";
+const char *password = "officefreewifi";
 const char *mqtt_server = "test.mosquitto.org"; // Alamat IP lokal dari Raspberry Pi
 
 #define sub1 "device1/relay1"
@@ -117,10 +117,12 @@ void loop()
     }
 
     // Read temperature and humidity from DHT11 sensor
-    float temperature = dht.readTemperature();
+    // float temperature = dht.readTemperature();
+    float temperature = 28.1;
     Serial.print("Temperature : ");
     Serial.println(temperature);
-    float humidity = dht.readHumidity();
+    // float humidity = dht.readHumidity();
+    float humidity = 89.1;
     Serial.print("Humidity : ");
     Serial.println(humidity);
 
